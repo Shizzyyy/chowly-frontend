@@ -1,0 +1,24 @@
+services:
+  web:
+    build: .
+    container_name: chowly-backend
+    ports:
+      - "8000:8000"
+    command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      - db
+
+  db:
+    image: postgres:17
+    container_name: chowly-postgres
+    environment:
+      POSTGRES_DB: chowly
+      POSTGRES_USER: chowly_user
+      POSTGRES_PASSWORD: chowly_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
