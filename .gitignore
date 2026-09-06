@@ -47,3 +47,6 @@ build/
 
 # Local archives
 *.zip
+
+# Database backups
+backend/chowly_backup.sql
