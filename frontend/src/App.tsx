@@ -72,38 +72,50 @@ function ChowlyApp() {
     );
   }
 
+  const pathname =
+    window.location.pathname;
+
+  const isCustomerLogin =
+    pathname === '/customer-login';
+
+  const isWaiterLogin =
+    pathname === '/waiter-login';
+
   /*
-   * Chowly has two separate login URLs:
-   *
-   * /customer-login
-   * /waiter-login
-   *
-   * LoginScreen reads the current pathname and
-   * automatically uses the correct login role.
+   * Login pages are always accessible.
+   * If there is no authenticated user, never
+   * fall through to the menu or waiter dashboard.
    */
   if (!user) {
-    const pathname =
-      window.location.pathname;
-
-    const isCustomerLogin =
-      pathname === '/customer-login';
-
-    const isWaiterLogin =
-      pathname === '/waiter-login';
-
-    /*
-     * Keep the root URL usable as the customer
-     * login without adding a role switch.
-     */
-    if (
-      isCustomerLogin ||
-      isWaiterLogin ||
-      pathname === '/'
-    ) {
-      return <LoginScreen />;
-    }
-
     return <LoginScreen />;
+  }
+
+  /*
+   * Prevent an authenticated customer from
+   * accidentally opening the waiter login URL,
+   * and prevent an authenticated waiter from
+   * accidentally opening the customer login URL.
+   */
+  if (
+    isWaiterLogin &&
+    role === 'customer'
+  ) {
+    window.location.replace(
+      '/customer-login',
+    );
+
+    return null;
+  }
+
+  if (
+    isCustomerLogin &&
+    role === 'waiter'
+  ) {
+    window.location.replace(
+      '/waiter-login',
+    );
+
+    return null;
   }
 
   return (
