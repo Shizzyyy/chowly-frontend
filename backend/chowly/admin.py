@@ -35,13 +35,11 @@ class CustomerAdmin(admin.ModelAdmin):
     list_display = (
         "customer_id",
         "name",
-        "email",
         "phone_number",
         "user",
     )
     search_fields = (
         "name",
-        "email",
         "phone_number",
         "user__username",
     )

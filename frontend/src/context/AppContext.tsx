@@ -20,7 +20,7 @@ import type {
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ??
-  'http://localhost:8000/api';
+  '/api';
 
 export type Role = 'customer' | 'waiter';
 
@@ -50,8 +50,9 @@ export interface AppNotification {
 interface AppState {
   role: Role;
   setRole: (r: Role) => void;
-  tableNumber: number;
-  setTableNumber: (n: number) => void;
+
+  tableNumber: number | null;
+  setTableNumber: (n: number | null) => void;
 
   user: AppUser | null;
   loading: boolean;
@@ -60,6 +61,12 @@ interface AppState {
     username: string,
     password: string,
     selectedRole: Role,
+  ) => Promise<void>;
+
+  signup: (
+    name: string,
+    username: string,
+    password: string,
   ) => Promise<void>;
 
   logout: () => Promise<void>;
@@ -105,9 +112,14 @@ interface AppState {
   submitPayment: (
     orderId: string,
     paymentMethod: PaymentMethod,
-  ) => Promise<void>;
+  ) => Promise<Order>;
 
   confirmPayment: (orderId: string) => Promise<void>;
+
+  rateOrder: (
+    orderId: string,
+    rating: number,
+  ) => Promise<void>;
 
   submitComplaint: (
     orderId: string,
@@ -162,6 +174,7 @@ interface ApiOrder {
   completed_at: string | null;
   is_paid: boolean;
   payment_submitted: boolean;
+  rating: number | null;
 
   customer: number;
   restaurant: number;
@@ -171,6 +184,11 @@ interface ApiOrder {
 
   order_items: ApiOrderItem[];
   total_amount: number;
+}
+
+interface ApiOrderRating {
+  order_id: number;
+  rating: number;
 }
 
 interface ApiChef {
@@ -226,7 +244,14 @@ interface ApiWaiterLogin {
   role: 'waiter';
   waiter_id: number;
   name: string;
-  restaurant_id: number;
+}
+
+interface ApiCustomerSignup {
+  detail: string;
+  username: string;
+  role: 'customer';
+  customer_id: number;
+  name: string;
 }
 
 interface ApiSession {
@@ -497,6 +522,9 @@ function mapOrder(
     isPaid:
       Boolean(order.is_paid),
 
+    rating:
+      order.rating ?? null,
+
     paymentSubmitted:
       Boolean(order.payment_submitted),
 
@@ -626,7 +654,7 @@ export function AppProvider({
     useState<Role>('customer');
 
   const [tableNumber, setTableNumber] =
-    useState(7);
+    useState<number | null>(null);
 
   const [user, setUser] =
     useState<AppUser | null>(null);
@@ -709,9 +737,10 @@ export function AppProvider({
               id: String(
                 bartender.bartender_id,
               ),
-            name: bartender.name,
+              name: bartender.name,
               role: 'bartender',
-            })),
+            }),
+          ),
         );
 
         setWaiters(
@@ -744,6 +773,8 @@ export function AppProvider({
           !session.role
         ) {
           setUser(null);
+          setRole('customer');
+          setTableNumber(null);
           return;
         }
 
@@ -782,6 +813,9 @@ export function AppProvider({
 
         setUser(nextUser);
         setRole(session.role);
+
+        // Table selection is intentionally session-local.
+        setTableNumber(null);
       } catch (error) {
         console.error(
           'Failed to load session:',
@@ -789,6 +823,8 @@ export function AppProvider({
         );
 
         setUser(null);
+        setRole('customer');
+        setTableNumber(null);
       }
     }, []);
 
@@ -851,7 +887,7 @@ export function AppProvider({
           },
         );
 
-        setOrders(
+        const mappedOrders =
           orderData.map((order) =>
             mapOrder(
               order,
@@ -860,8 +896,9 @@ export function AppProvider({
                 order.order_id,
               ),
             ),
-          ),
-        );
+          );
+
+        setOrders(mappedOrders);
       } catch (error) {
         console.error(
           'Failed to load orders:',
@@ -915,13 +952,14 @@ export function AppProvider({
     }, [user]);
 
   useEffect(() => {
-    if (
-      !user ||
-      menuItems.length === 0
-    ) {
+    if (!user) {
+      setOrders([]);
       return;
     }
 
+    // Orders belong to the authenticated account.
+    // They must be loaded regardless of whether
+    // the menu has finished loading.
     void refreshOrders();
 
     const interval =
@@ -935,7 +973,6 @@ export function AppProvider({
       );
   }, [
     user,
-    menuItems,
     refreshOrders,
   ]);
 
@@ -1073,7 +1110,8 @@ export function AppProvider({
           >(endpoint, {
             method: 'POST',
             body: JSON.stringify({
-              username,
+              username:
+                username.trim(),
               password,
             }),
           });
@@ -1108,12 +1146,21 @@ export function AppProvider({
         setUser(nextUser);
         setRole(nextUser.role);
 
-        if (
-          nextUser.role ===
-          'customer'
-        ) {
-          setTableNumber(7);
-        }
+        // Table selection is intentionally reset
+        // whenever a new login session begins.
+        setTableNumber(null);
+
+        // A new login gets a fresh cart.
+        setCart([]);
+
+        // Do NOT clear orders here.
+        // Orders belong to the account and are
+        // reloaded from /orders/ for the authenticated user.
+        //
+        // Notifications are also refreshed from
+        // the authenticated account instead of being
+        // treated as permanent local state.
+        setNotifications([]);
 
         await Promise.all([
           loadMenu(),
@@ -1124,6 +1171,28 @@ export function AppProvider({
         loadMenu,
         loadStaff,
       ],
+    );
+
+  const signup =
+    useCallback(
+      async (
+        name: string,
+        username: string,
+        password: string,
+      ) => {
+        await apiJson<ApiCustomerSignup>(
+          '/customer-signup/',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              name: name.trim(),
+              username: username.trim(),
+              password,
+            }),
+          },
+        );
+      },
+      [],
     );
 
   const logout =
@@ -1141,6 +1210,7 @@ export function AppProvider({
         setNotifications([]);
         setCart([]);
         setRole('customer');
+        setTableNumber(null);
       }
     }, []);
 
@@ -1313,6 +1383,12 @@ export function AppProvider({
         if (cart.length === 0) {
           throw new Error(
             'Your cart is empty.',
+          );
+        }
+
+        if (tableNumber === null) {
+          throw new Error(
+            'Please select the table you are seated at before placing your order.',
           );
         }
 
@@ -1545,7 +1621,7 @@ export function AppProvider({
       async (
         orderId: string,
         paymentMethod: PaymentMethod,
-      ) => {
+      ): Promise<Order> => {
         const order =
           orders.find(
             (item) =>
@@ -1592,13 +1668,55 @@ export function AppProvider({
           },
         );
 
-        await refreshOrders();
         await refreshNotifications();
+
+        const refreshedOrders =
+          await apiJson<ApiOrder[]>(
+            '/orders/',
+          );
+
+        const refreshedApiOrder =
+          refreshedOrders.find(
+            (item) =>
+              item.order_id ===
+              Number(orderId),
+          );
+
+        if (!refreshedApiOrder) {
+          throw new Error(
+            'Payment was submitted, but the updated order could not be loaded.',
+          );
+        }
+
+        const menuLookup =
+          new Map(
+            menuItems.map((item) => [
+              Number(item.id),
+              item,
+            ]),
+          );
+
+        const updatedOrder =
+          mapOrder(
+            refreshedApiOrder,
+            menuLookup,
+          );
+
+        setOrders((prev) =>
+          prev.map((existing) =>
+            existing.id ===
+            updatedOrder.id
+              ? updatedOrder
+              : existing,
+          ),
+        );
+
+        return updatedOrder;
       },
       [
         orders,
-        refreshOrders,
         refreshNotifications,
+        menuItems,
       ],
     );
 
@@ -1625,6 +1743,96 @@ export function AppProvider({
       [
         updateOrderFromApi,
         refreshOrders,
+        refreshNotifications,
+      ],
+    );
+
+  const rateOrder =
+    useCallback(
+      async (
+        orderId: string,
+        rating: number,
+      ) => {
+        const order =
+          orders.find(
+            (item) =>
+              item.id === orderId,
+          );
+
+        if (!order) {
+          throw new Error(
+            'Order not found.',
+          );
+        }
+
+        if (!order.isPaid) {
+          throw new Error(
+            'You can only rate an order after payment.',
+          );
+        }
+
+        if (
+          order.status !==
+            'served' &&
+          order.status !==
+            'completed'
+        ) {
+          throw new Error(
+            'You can only rate an order after it has been served.',
+          );
+        }
+
+        if (
+          order.rating !== null &&
+          order.rating !== undefined
+        ) {
+          throw new Error(
+            'This order has already been rated.',
+          );
+        }
+
+        if (
+          !Number.isInteger(
+            rating,
+          ) ||
+          rating < 1 ||
+          rating > 5
+        ) {
+          throw new Error(
+            'Rating must be between 1 and 5.',
+          );
+        }
+
+        const ratingResponse =
+          await apiJson<ApiOrderRating>(
+            `/orders/${orderId}/rating/`,
+            {
+              method: 'PATCH',
+              body: JSON.stringify({
+                rating,
+              }),
+            },
+          );
+
+        setOrders((prev) =>
+          prev.map((existing) =>
+            existing.id ===
+            String(
+              ratingResponse.order_id,
+            )
+              ? {
+                  ...existing,
+                  rating:
+                    ratingResponse.rating,
+                }
+              : existing,
+          ),
+        );
+
+        await refreshNotifications();
+      },
+      [
+        orders,
         refreshNotifications,
       ],
     );
@@ -1675,10 +1883,10 @@ export function AppProvider({
           );
 
         if (
-          elapsedMinutes < 30
+          elapsedMinutes < 20
         ) {
           throw new Error(
-            'A complaint can only be submitted after 30 minutes of preparation.',
+            'A complaint can only be submitted after 20 minutes of preparation.',
           );
         }
 
@@ -1719,6 +1927,7 @@ export function AppProvider({
     user,
     loading,
     login,
+    signup,
     logout,
 
     menuItems,
@@ -1752,6 +1961,7 @@ export function AppProvider({
     markServed,
     submitPayment,
     confirmPayment,
+    rateOrder,
     submitComplaint,
 
     refreshOrders,

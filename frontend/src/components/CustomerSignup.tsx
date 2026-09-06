@@ -1,19 +1,15 @@
-import { FormEvent, useState } from 'react';
+import {
+  FormEvent,
+  useState,
+} from 'react';
 import { UtensilsCrossed } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import type { Role } from '@/context/AppContext';
 
-export default function LoginScreen() {
-  const { login } = useApp();
+export default function CustomerSignup() {
+  const { signup } = useApp();
 
-  const isWaiterLogin =
-    window.location.pathname ===
-    '/waiter-login';
-
-  const selectedRole: Role =
-    isWaiterLogin
-      ? 'waiter'
-      : 'customer';
+  const [name, setName] =
+    useState('');
 
   const [username, setUsername] =
     useState('');
@@ -22,6 +18,9 @@ export default function LoginScreen() {
     useState('');
 
   const [error, setError] =
+    useState('');
+
+  const [success, setSuccess] =
     useState('');
 
   const [submitting, setSubmitting] =
@@ -33,46 +32,34 @@ export default function LoginScreen() {
     event.preventDefault();
 
     setError('');
+    setSuccess('');
     setSubmitting(true);
 
     try {
-      await login(
+      await signup(
+        name.trim(),
         username.trim(),
         password,
-        selectedRole,
       );
 
-      window.location.href = '/';
+      setSuccess(
+        'Signup successful! Redirecting you to customer login...',
+      );
+
+      window.setTimeout(() => {
+        window.location.href =
+          '/customer-login';
+      }, 1200);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : 'Login failed. Please try again.',
+          : 'Signup failed. Please try again.',
       );
     } finally {
       setSubmitting(false);
     }
   };
-
-  const title =
-    selectedRole === 'customer'
-      ? 'Customer Login'
-      : 'Waiter Login';
-
-  const subtitle =
-    selectedRole === 'customer'
-      ? 'Sign in to order from Chowly'
-      : 'Sign in to manage Chowly orders';
-
-  const demoUsername =
-    selectedRole === 'customer'
-      ? 'customer_demo'
-      : 'waiter_chidi';
-
-  const demoPassword =
-    selectedRole === 'customer'
-      ? 'customer123'
-      : 'waiter123';
 
   return (
     <div className="min-h-screen bg-cream-100 flex items-center justify-center px-4">
@@ -86,24 +73,22 @@ export default function LoginScreen() {
           </div>
 
           <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-ink-900">
-            {title}
+            Welcome to Chowly
           </h1>
 
           <p className="mt-2 text-sm text-ink-500">
-            {subtitle}
+            Create your customer account
           </p>
         </div>
 
         <div className="rounded-3xl bg-cream-50 p-6 shadow-card border border-ink-100">
           <div className="mb-6 rounded-2xl bg-cream-200 px-4 py-3 text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-              Signing in as
+              Create your account
             </p>
 
             <p className="mt-1 text-lg font-bold text-primary-600">
-              {selectedRole === 'customer'
-                ? 'Customer'
-                : 'Waiter'}
+              Customer
             </p>
           </div>
 
@@ -111,6 +96,27 @@ export default function LoginScreen() {
             onSubmit={handleSubmit}
             className="space-y-4"
           >
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-ink-800">
+                Full name
+              </label>
+
+              <input
+                type="text"
+                value={name}
+                onChange={(event) =>
+                  setName(
+                    event.target.value,
+                  )
+                }
+                autoComplete="name"
+                required
+                disabled={submitting}
+                className="w-full rounded-xl border border-ink-100 bg-white px-4 py-3 text-sm text-ink-900 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder="Enter your full name"
+              />
+            </div>
+
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-ink-800">
                 Username
@@ -126,10 +132,9 @@ export default function LoginScreen() {
                 }
                 autoComplete="username"
                 required
-                className="w-full rounded-xl border border-ink-100 bg-white px-4 py-3 text-sm text-ink-900 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-                placeholder={
-                  demoUsername
-                }
+                disabled={submitting}
+                className="w-full rounded-xl border border-ink-100 bg-white px-4 py-3 text-sm text-ink-900 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder="Choose a username"
               />
             </div>
 
@@ -146,10 +151,12 @@ export default function LoginScreen() {
                     event.target.value,
                   )
                 }
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
-                className="w-full rounded-xl border border-ink-100 bg-white px-4 py-3 text-sm text-ink-900 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-                placeholder="Enter your password"
+                minLength={8}
+                disabled={submitting}
+                className="w-full rounded-xl border border-ink-100 bg-white px-4 py-3 text-sm text-ink-900 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder="Create a password"
               />
             </div>
 
@@ -159,48 +166,39 @@ export default function LoginScreen() {
               </div>
             )}
 
+            {success && (
+              <div className="rounded-xl bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+                {success}
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={submitting}
+              disabled={
+                submitting ||
+                Boolean(success)
+              }
               className="w-full rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white shadow-warm transition-all hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting
-                ? 'Signing in...'
-                : `Sign in as ${
-                    selectedRole ===
-                    'customer'
-                      ? 'Customer'
-                      : 'Waiter'
-                  }`}
+                ? 'Creating account...'
+                : 'Create account'}
             </button>
           </form>
 
-          {selectedRole === 'customer' && (
-            <div className="mt-6 text-center">
-              <p className="text-sm text-ink-500">
-                Don't have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href =
-                      '/customer-signup';
-                  }}
-                  className="font-semibold text-primary-600 transition-colors hover:text-primary-700"
-                >
-                  Create an account
-                </button>
-              </p>
-            </div>
-          )}
-
-          <div className="mt-6 rounded-xl bg-cream-100 p-4 text-xs text-ink-500">
-            <p className="font-semibold text-ink-700">
-              Demo credentials
-            </p>
-
-            <p className="mt-1">
-              {demoUsername} /{' '}
-              {demoPassword}
+          <div className="mt-6 text-center">
+            <p className="text-sm text-ink-500">
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href =
+                    '/customer-login';
+                }}
+                className="font-semibold text-primary-600 transition-colors hover:text-primary-700"
+              >
+                Log in
+              </button>
             </p>
           </div>
         </div>

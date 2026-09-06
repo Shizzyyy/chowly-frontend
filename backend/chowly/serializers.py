@@ -1,5 +1,8 @@
 from datetime import timedelta
 
+from django.contrib.auth import password_validation
+from django.contrib.auth.models import Group, User
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -30,6 +33,86 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = "__all__"
+
+
+class CustomerSignupSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=255,
+        required=True,
+        allow_blank=False,
+    )
+    username = serializers.CharField(
+        max_length=150,
+        required=True,
+        allow_blank=False,
+    )
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        min_length=8,
+    )
+
+    def validate_name(self, name):
+        name = name.strip()
+
+        if not name:
+            raise serializers.ValidationError(
+                "Full name cannot be empty."
+            )
+
+        return name
+
+    def validate_username(self, username):
+        username = username.strip()
+
+        if not username:
+            raise serializers.ValidationError(
+                "Username cannot be empty."
+            )
+
+        if User.objects.filter(username=username).exists():
+            raise serializers.ValidationError(
+                "This username is already taken."
+            )
+
+        return username
+
+    def validate_password(self, password):
+        try:
+            password_validation.validate_password(
+                password
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                list(exc.messages)
+            )
+
+        return password
+
+    def create(self, validated_data):
+        name = validated_data["name"]
+        username = validated_data["username"]
+        password = validated_data["password"]
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=name,
+            )
+
+            customer_group, _ = Group.objects.get_or_create(
+                name="Customer"
+            )
+
+            user.groups.add(customer_group)
+
+            customer = Customer.objects.create(
+                user=user,
+                name=name,
+            )
+
+        return customer
 
 
 class WaiterSerializer(serializers.ModelSerializer):
@@ -72,6 +155,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Quantity must be at least 1."
             )
+
         return quantity
 
     def validate(self, attrs):
@@ -108,9 +192,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
         menu_item = validated_data["menu_item"]
         quantity = validated_data["quantity"]
 
-        validated_data["subtotal"] = menu_item.price * quantity
+        validated_data["subtotal"] = (
+            menu_item.price * quantity
+        )
 
-        return OrderItem.objects.create(**validated_data)
+        return OrderItem.objects.create(
+            **validated_data
+        )
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -146,6 +234,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "served_at",
             "completed_at",
             "is_paid",
+            "rating",
             "payment_submitted",
             "customer",
             "restaurant",
@@ -166,6 +255,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "served_at",
             "completed_at",
             "is_paid",
+            "rating",
             "payment_submitted",
             "order_items",
             "total_amount",
@@ -179,26 +269,35 @@ class OrderSerializer(serializers.ModelSerializer):
                 "Authentication is required."
             )
 
-        if self.instance is not None:
-            return attrs
-
         restaurant = attrs.get("restaurant")
 
         if not restaurant:
             raise serializers.ValidationError(
-                {"restaurant": "A restaurant is required."}
+                {
+                    "restaurant": (
+                        "A restaurant is required."
+                    )
+                }
             )
 
         items = attrs.get("items")
 
         if not items:
             raise serializers.ValidationError(
-                {"items": "An order must contain at least one item."}
+                {
+                    "items": (
+                        "An order must contain at least one item."
+                    )
+                }
             )
 
         if not isinstance(items, list):
             raise serializers.ValidationError(
-                {"items": "Items must be provided as a list."}
+                {
+                    "items": (
+                        "Items must be provided as a list."
+                    )
+                }
             )
 
         for index, item in enumerate(items):
@@ -270,7 +369,10 @@ class OrderSerializer(serializers.ModelSerializer):
                     }
                 )
 
-            if menu_item.restaurant_id != restaurant.restaurant_id:
+            if (
+                menu_item.restaurant_id
+                != restaurant.restaurant_id
+            ):
                 raise serializers.ValidationError(
                     {
                         "items": (
@@ -281,7 +383,10 @@ class OrderSerializer(serializers.ModelSerializer):
                     }
                 )
 
-        table_number = attrs.get("table_number", 1)
+        table_number = attrs.get(
+            "table_number",
+            1,
+        )
 
         if table_number < 1:
             raise serializers.ValidationError(
@@ -320,7 +425,11 @@ class OrderSerializer(serializers.ModelSerializer):
             )
 
         items_data = validated_data.pop("items")
-        table_number = validated_data.pop("table_number", 1)
+
+        table_number = validated_data.pop(
+            "table_number",
+            1,
+        )
 
         with transaction.atomic():
             order = Order.objects.create(
@@ -340,13 +449,17 @@ class OrderSerializer(serializers.ModelSerializer):
                     pk=item_data["menu_item"]
                 )
 
-                quantity = int(item_data["quantity"])
+                quantity = int(
+                    item_data["quantity"]
+                )
 
                 OrderItem.objects.create(
                     order=order,
                     menu_item=menu_item,
                     quantity=quantity,
-                    subtotal=menu_item.price * quantity,
+                    subtotal=(
+                        menu_item.price * quantity
+                    ),
                 )
 
                 if menu_item.item_type == "food":
@@ -367,7 +480,9 @@ class OrderSerializer(serializers.ModelSerializer):
             )
 
             order.save(
-                update_fields=["order_waiting_time"]
+                update_fields=[
+                    "order_waiting_time"
+                ]
             )
 
         return order
@@ -388,6 +503,7 @@ class OrderSerializer(serializers.ModelSerializer):
             )
 
         validated_data.pop("items", None)
+        validated_data.pop("rating", None)
 
         allowed_fields = {
             "waiter",
@@ -396,25 +512,37 @@ class OrderSerializer(serializers.ModelSerializer):
             "order_status",
         }
 
-        unexpected = set(validated_data.keys()) - allowed_fields
+        unexpected = (
+            set(validated_data.keys())
+            - allowed_fields
+        )
 
         if unexpected:
             raise serializers.ValidationError(
                 {
-                    field: "This field cannot be changed here."
+                    field: (
+                        "This field cannot be changed here."
+                    )
                     for field in unexpected
                 }
             )
 
         restaurant = instance.restaurant
 
-        for field in ["waiter", "chef", "bartender"]:
+        for field in [
+            "waiter",
+            "chef",
+            "bartender",
+        ]:
             staff_member = validated_data.get(field)
 
             if staff_member is None:
                 continue
 
-            if staff_member.restaurant_id != restaurant.restaurant_id:
+            if (
+                staff_member.restaurant_id
+                != restaurant.restaurant_id
+            ):
                 raise serializers.ValidationError(
                     {
                         field: (
@@ -425,6 +553,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 )
 
         old_status = instance.order_status
+
         new_status = validated_data.get(
             "order_status",
             old_status,
@@ -474,9 +603,10 @@ class OrderSerializer(serializers.ModelSerializer):
             )
 
         if new_status == "accepted":
-            if instance.waiter is None and validated_data.get(
-                "waiter"
-            ) is None:
+            if (
+                instance.waiter is None
+                and validated_data.get("waiter") is None
+            ):
                 raise serializers.ValidationError(
                     {
                         "waiter": (
@@ -525,9 +655,10 @@ class OrderSerializer(serializers.ModelSerializer):
                     }
                 )
 
-            if instance.waiter is None and validated_data.get(
-                "waiter"
-            ) is None:
+            if (
+                instance.waiter is None
+                and validated_data.get("waiter") is None
+            ):
                 raise serializers.ValidationError(
                     {
                         "waiter": (
@@ -559,9 +690,10 @@ class OrderSerializer(serializers.ModelSerializer):
                     }
                 )
 
-            if instance.waiter is None and validated_data.get(
-                "waiter"
-            ) is None:
+            if (
+                instance.waiter is None
+                and validated_data.get("waiter") is None
+            ):
                 raise serializers.ValidationError(
                     {
                         "waiter": (
@@ -605,7 +737,9 @@ class OrderSerializer(serializers.ModelSerializer):
                 and new_status == "preparing"
                 and not instance.preparing_started_at
             ):
-                instance.preparing_started_at = timezone.now()
+                instance.preparing_started_at = (
+                    timezone.now()
+                )
 
             if (
                 old_status != "served"
@@ -638,11 +772,67 @@ class OrderSerializer(serializers.ModelSerializer):
         return instance
 
 
+class OrderRatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = [
+            "order_id",
+            "rating",
+        ]
+        read_only_fields = [
+            "order_id",
+        ]
+
+    def validate_rating(self, rating):
+        if rating is None:
+            raise serializers.ValidationError(
+                "A rating is required."
+            )
+
+        if not 1 <= rating <= 5:
+            raise serializers.ValidationError(
+                "Rating must be between 1 and 5."
+            )
+
+        return rating
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        order = self.instance
+
+        if not request or not request.user.is_authenticated:
+            raise serializers.ValidationError(
+                "Authentication is required."
+            )
+
+        if order.customer.user != request.user:
+            raise serializers.ValidationError(
+                "You can only rate your own order."
+            )
+
+        if not order.is_paid:
+            raise serializers.ValidationError(
+                "You can only rate an order after payment."
+            )
+
+        if order.order_status not in {
+            "served",
+            "completed",
+        }:
+            raise serializers.ValidationError(
+                "You can only rate an order after it has been served."
+            )
+
+        return attrs
+
+
 class ComplaintSerializer(serializers.ModelSerializer):
     class Meta:
         model = Complaint
         fields = "__all__"
-        read_only_fields = ["complaint_date"]
+        read_only_fields = [
+            "complaint_date"
+        ]
 
     def validate_order(self, order):
         request = self.context.get("request")
@@ -669,13 +859,18 @@ class ComplaintSerializer(serializers.ModelSerializer):
             )
 
         elapsed_time = (
-            timezone.now() - order.preparing_started_at
+            timezone.now()
+            - order.preparing_started_at
         )
 
-        if elapsed_time < timedelta(minutes=30):
+        complaint_wait = timedelta(
+            minutes=20
+        )
+
+        if elapsed_time < complaint_wait:
             remaining_seconds = int(
                 (
-                    timedelta(minutes=30)
+                    complaint_wait
                     - elapsed_time
                 ).total_seconds()
             )
@@ -704,6 +899,7 @@ class ComplaintSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Rating must be between 1 and 5."
             )
+
         return rating
 
     def validate_complaint_details(self, details):
@@ -711,6 +907,7 @@ class ComplaintSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Complaint details cannot be empty."
             )
+
         return details.strip()
 
 
@@ -764,6 +961,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Payment amount must be greater than zero."
             )
+
         return amount
 
     def validate(self, attrs):
@@ -771,7 +969,11 @@ class PaymentSerializer(serializers.ModelSerializer):
 
         if not order:
             raise serializers.ValidationError(
-                {"order": "An order is required."}
+                {
+                    "order": (
+                        "An order is required."
+                    )
+                }
             )
 
         expected_amount = sum(
@@ -784,7 +986,10 @@ class PaymentSerializer(serializers.ModelSerializer):
             0,
         )
 
-        if attrs.get("payment_amount") != expected_amount:
+        if (
+            attrs.get("payment_amount")
+            != expected_amount
+        ):
             raise serializers.ValidationError(
                 {
                     "payment_amount": (
@@ -798,22 +1003,31 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         order = validated_data["order"]
-        payment_method = validated_data["payment_method"]
+        payment_method = validated_data[
+            "payment_method"
+        ]
 
-        payment_is_paid = payment_method == "pretend"
+        payment_is_paid = (
+            payment_method == "pretend"
+        )
 
         with transaction.atomic():
             payment = Payment.objects.create(
                 order=order,
-                payment_amount=validated_data["payment_amount"],
+                payment_amount=validated_data[
+                    "payment_amount"
+                ],
                 payment_method=payment_method,
                 is_paid=payment_is_paid,
             )
 
             if payment_is_paid:
                 order.is_paid = True
+
                 order.save(
-                    update_fields=["is_paid"]
+                    update_fields=[
+                        "is_paid"
+                    ]
                 )
 
         return payment

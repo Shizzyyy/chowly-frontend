@@ -353,13 +353,21 @@ export default function WaiterView() {
                     </span>
                   </div>
 
-                  <div className="mt-2 flex items-center gap-4 text-xs text-ink-500">
+                  <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-ink-500">
                     <span>
                       {order.items.length} items ·{' '}
                       {formatPrice(
                         order.totalAmount,
                       )}
                     </span>
+
+                    {order.rating != null && (
+                      <span className="flex items-center gap-1 text-primary-600">
+                        <Star className="h-3.5 w-3.5 fill-primary-500 text-primary-500" />
+                        Customer rating (
+                        {order.rating}★)
+                      </span>
+                    )}
 
                     {order.complaint && (
                       <span className="flex items-center gap-1 text-error-500">
@@ -418,13 +426,21 @@ export default function WaiterView() {
                     </span>
                   </div>
 
-                  <div className="mt-2 flex items-center gap-4 text-xs text-ink-500">
+                  <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-ink-500">
                     <span>
                       {order.items.length} items ·{' '}
                       {formatPrice(
                         order.totalAmount,
                       )}
                     </span>
+
+                    {order.rating != null && (
+                      <span className="flex items-center gap-1 text-primary-600">
+                        <Star className="h-3.5 w-3.5 fill-primary-500 text-primary-500" />
+                        Customer rating (
+                        {order.rating}★)
+                      </span>
+                    )}
 
                     {order.complaint && (
                       <span className="flex items-center gap-1 text-error-500">
@@ -702,6 +718,40 @@ function WaiterOrderDetail({
             </div>
           </div>
 
+          {order.rating != null && (
+            <div className="rounded-2xl bg-primary-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Star className="h-4 w-4 fill-primary-500 text-primary-500" />
+
+                  <span className="text-sm font-semibold text-primary-700">
+                    Customer Rating
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-0.5">
+                  {Array.from({
+                    length: 5,
+                  }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`h-4 w-4 ${
+                        i < order.rating!
+                          ? 'fill-primary-500 text-primary-500'
+                          : 'text-ink-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <p className="mt-2 text-xs text-ink-500">
+                Customer rated this order{' '}
+                {order.rating} out of 5 stars.
+              </p>
+            </div>
+          )}
+
           {order.complaint && (
             <div className="rounded-2xl bg-error-50 p-4">
               <div className="flex items-center gap-2">
@@ -952,16 +1002,50 @@ function WaiterOrderDetail({
           )}
 
           {order.status === 'completed' && (
-            <div className="rounded-2xl bg-ink-100 p-4 text-center">
-              <CheckCircle2 className="mx-auto h-8 w-8 text-ink-500" />
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-ink-100 p-4 text-center">
+                <CheckCircle2 className="mx-auto h-8 w-8 text-ink-500" />
 
-              <p className="mt-2 text-sm font-semibold text-ink-700">
-                Order completed
-              </p>
+                <p className="mt-2 text-sm font-semibold text-ink-700">
+                  Order completed
+                </p>
 
-              <p className="mt-1 text-xs text-ink-500">
-                Payment has been confirmed and the order is complete.
-              </p>
+                <p className="mt-1 text-xs text-ink-500">
+                  Payment has been confirmed and the order is complete.
+                </p>
+              </div>
+
+              {order.complaint && (
+                <div className="rounded-2xl bg-error-50 p-4">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-error-500" />
+
+                    <span className="text-sm font-semibold text-error-700">
+                      Customer Complaint
+                    </span>
+
+                    <div className="ml-auto flex items-center gap-0.5">
+                      {Array.from({
+                        length: 5,
+                      }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${
+                            i <
+                            order.complaint!.rating
+                              ? 'fill-error-500 text-error-500'
+                              : 'text-ink-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-sm text-ink-600 italic">
+                    "{order.complaint.message}"
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

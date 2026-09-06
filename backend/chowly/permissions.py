@@ -105,6 +105,17 @@ class OrderDetailPermission(BasePermission):
         return False
 
 
+class OrderRatingPermission(BasePermission):
+    def has_permission(self, request, view):
+        if request.method not in [
+            "PATCH",
+            "PUT",
+        ]:
+            return False
+
+        return is_customer(request.user)
+
+
 class OrderItemPermission(BasePermission):
     def has_permission(self, request, view):
         if not request.user.is_authenticated:

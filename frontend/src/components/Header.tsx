@@ -52,15 +52,28 @@ export default function Header({
     document.addEventListener('mousedown', handleClickOutside);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener(
+        'mousedown',
+        handleClickOutside,
+      );
     };
   }, [notificationOpen]);
 
   const handleLogout = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to log out?',
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     await logout();
   };
 
-  const handleNotificationClick = (notificationId: string) => {
+  const handleNotificationClick = (
+    notificationId: string,
+  ) => {
     markNotificationRead(notificationId);
   };
 
@@ -121,15 +134,16 @@ export default function Header({
             </nav>
           )}
 
-          {role === 'customer' && (
-            <div className="hidden items-center gap-1.5 text-sm text-ink-500 md:flex">
-              <MapPin className="h-4 w-4 text-primary-500" />
-              <span className="font-medium">Table</span>
-              <span className="font-bold text-ink-800">
-                {tableNumber}
-              </span>
-            </div>
-          )}
+          {role === 'customer' &&
+            tableNumber !== null && (
+              <div className="hidden items-center gap-1.5 text-sm text-ink-500 md:flex">
+                <MapPin className="h-4 w-4 text-primary-500" />
+                <span className="font-medium">Table</span>
+                <span className="font-bold text-ink-800">
+                  {tableNumber}
+                </span>
+              </div>
+            )}
 
           <div className="flex items-center gap-2">
             <div
@@ -209,77 +223,81 @@ export default function Header({
                     </div>
                   ) : (
                     <div className="max-h-80 overflow-y-auto">
-                      {notifications.slice(0, 8).map((notification) => (
-                        <div
-                          key={notification.id}
-                          className={`flex items-start border-b border-ink-50 last:border-b-0 ${
-                            notification.isRead
-                              ? 'bg-white'
-                              : 'bg-primary-50/40'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleNotificationClick(notification.id)
-                            }
-                            className="min-w-0 flex-1 px-4 py-3 text-left transition-colors hover:bg-cream-50"
+                      {notifications
+                        .slice(0, 8)
+                        .map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`flex items-start border-b border-ink-50 last:border-b-0 ${
+                              notification.isRead
+                                ? 'bg-white'
+                                : 'bg-primary-50/40'
+                            }`}
                           >
-                            <div className="flex items-start gap-3">
-                              <div
-                                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                                  notification.isRead
-                                    ? 'bg-cream-100'
-                                    : 'bg-primary-100'
-                                }`}
-                              >
-                                <Bell
-                                  className={`h-3.5 w-3.5 ${
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleNotificationClick(
+                                  notification.id,
+                                )
+                              }
+                              className="min-w-0 flex-1 px-4 py-3 text-left transition-colors hover:bg-cream-50"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div
+                                  className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                                     notification.isRead
-                                      ? 'text-ink-300'
-                                      : 'text-primary-500'
-                                  }`}
-                                />
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className={`text-xs leading-5 ${
-                                    notification.isRead
-                                      ? 'font-medium text-ink-500'
-                                      : 'font-semibold text-ink-800'
+                                      ? 'bg-cream-100'
+                                      : 'bg-primary-100'
                                   }`}
                                 >
-                                  {notification.message}
-                                </p>
+                                  <Bell
+                                    className={`h-3.5 w-3.5 ${
+                                      notification.isRead
+                                        ? 'text-ink-300'
+                                        : 'text-primary-500'
+                                    }`}
+                                  />
+                                </div>
 
-                                <p className="mt-1 text-[10px] text-ink-400">
-                                  Order #{notification.orderId}
-                                </p>
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className={`text-xs leading-5 ${
+                                      notification.isRead
+                                        ? 'font-medium text-ink-500'
+                                        : 'font-semibold text-ink-800'
+                                    }`}
+                                  >
+                                    {notification.message}
+                                  </p>
+
+                                  <p className="mt-1 text-[10px] text-ink-400">
+                                    Order #{notification.orderId}
+                                  </p>
+                                </div>
+
+                                {!notification.isRead && (
+                                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary-500" />
+                                )}
                               </div>
+                            </button>
 
-                              {!notification.isRead && (
-                                <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary-500" />
-                              )}
-                            </div>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(event) =>
-                              handleClearNotification(
-                                event,
-                                notification.id,
-                              )
-                            }
-                            className="mr-2 mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-cream-200 hover:text-ink-700"
-                            aria-label={`Clear notification: ${notification.message}`}
-                            title="Clear notification"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                            <button
+                              type="button"
+                              onClick={(event) =>
+                                handleClearNotification(
+                                  event,
+                                  notification.id,
+                                )
+                              }
+                              className="mr-2 mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-cream-200 hover:text-ink-700"
+                              aria-label={`Clear notification: ${notification.message}`}
+                              title="Clear notification"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
                     </div>
                   )}
                 </div>
@@ -288,7 +306,7 @@ export default function Header({
 
             <div className="hidden text-right sm:block">
               <p className="text-xs font-semibold text-ink-800">
-                {user.name || user.username}
+                {user?.username}
               </p>
 
               <p className="text-[11px] capitalize text-ink-500">
@@ -301,7 +319,9 @@ export default function Header({
               className="inline-flex items-center gap-1.5 rounded-full bg-ink-900 px-3.5 py-2 text-xs font-semibold text-white transition-all hover:bg-ink-800"
             >
               <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Logout</span>
+              <span className="hidden sm:inline">
+                Logout
+              </span>
             </button>
           </div>
         </div>

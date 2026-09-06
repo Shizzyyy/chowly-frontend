@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     customer_login_view,
+    customer_signup_view,
     waiter_login_view,
     logout_view,
     session_view,
@@ -24,6 +25,7 @@ from .views import (
     OrderItemDetailView,
     ComplaintListCreateView,
     ComplaintDetailView,
+    OrderRatingView,
     PaymentListCreateView,
     PaymentDetailView,
     NotificationListView,
@@ -36,6 +38,11 @@ urlpatterns = [
         "customer-login/",
         customer_login_view,
         name="customer-login",
+    ),
+    path(
+        "customer-signup/",
+        customer_signup_view,
+        name="customer-signup",
     ),
     path(
         "waiter-login/",
@@ -132,6 +139,11 @@ urlpatterns = [
         "orders/<int:pk>/confirm-payment/",
         confirm_payment_view,
         name="order-confirm-payment",
+    ),
+    path(
+        "orders/<int:pk>/rating/",
+        OrderRatingView.as_view(),
+        name="order-rating",
     ),
 
     # Order items

@@ -15,6 +15,7 @@ import type { Order, PaymentMethod } from '@/types';
 interface PaymentModalProps {
   order: Order | null;
   onClose: () => void;
+  onPaymentSubmitted?: (order: Order) => void;
 }
 
 const paymentMethods: {
@@ -45,6 +46,7 @@ const paymentMethods: {
 export default function PaymentModal({
   order,
   onClose,
+  onPaymentSubmitted,
 }: PaymentModalProps) {
   const { submitPayment } = useApp();
 
@@ -84,12 +86,17 @@ export default function PaymentModal({
     setStep('processing');
 
     try {
-      await submitPayment(
-        order.id,
-        selectedMethod,
-      );
+      const updatedOrder =
+        await submitPayment(
+          order.id,
+          selectedMethod,
+        );
 
       setStep('success');
+
+      onPaymentSubmitted?.(
+        updatedOrder,
+      );
     } catch (err) {
       setStep('pay');
 
@@ -119,7 +126,9 @@ export default function PaymentModal({
         onClick={handleClose}
       />
 
-      <div className="relative flex max-h-[calc(100vh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream-50 shadow-2xl animate-slide-up sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:animate-scale-in">
+      <div
+        className="relative flex max-h-[calc(100vh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream-50 shadow-2xl animate-slide-up sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:animate-scale-in"
+      >
         {step !== 'success' && (
           <div className="flex shrink-0 items-center justify-between border-b border-ink-100 bg-cream-50 px-5 py-4">
             <button

@@ -4,6 +4,7 @@ import {
 } from 'react';
 import Header from '@/components/Header';
 import LoginScreen from '@/components/LoginScreen';
+import CustomerSignup from '@/components/CustomerSignup';
 import CustomerMenu from '@/components/CustomerMenu';
 import CustomerOrders from '@/components/CustomerOrders';
 import CartBar from '@/components/CartBar';
@@ -48,6 +49,30 @@ function ChowlyApp() {
     useState<Order | null>(null);
 
   useEffect(() => {
+    /*
+     * Whenever the customer logs out, always reset
+     * the active customer tab to Menu.
+     *
+     * This means that after logging back in, the
+     * customer starts from the Menu page instead of
+     * being returned to the Orders page they logged
+     * out from.
+     */
+    if (!user) {
+      setCustomerTab('menu');
+
+      try {
+        window.sessionStorage.setItem(
+          CUSTOMER_TAB_STORAGE_KEY,
+          'menu',
+        );
+      } catch {
+        // Ignore sessionStorage failures.
+      }
+    }
+  }, [user]);
+
+  useEffect(() => {
     try {
       window.sessionStorage.setItem(
         CUSTOMER_TAB_STORAGE_KEY,
@@ -75,6 +100,9 @@ function ChowlyApp() {
   const pathname =
     window.location.pathname;
 
+  const isCustomerSignup =
+    pathname === '/customer-signup';
+
   const isCustomerLogin =
     pathname === '/customer-login';
 
@@ -82,9 +110,27 @@ function ChowlyApp() {
     pathname === '/waiter-login';
 
   /*
-   * Login pages are always accessible.
-   * If there is no authenticated user, never
-   * fall through to the menu or waiter dashboard.
+   * Customer signup is always accessible.
+   */
+  if (isCustomerSignup) {
+    return <CustomerSignup />;
+  }
+
+  /*
+   * Customer login must always display the
+   * customer login screen. This prevents an
+   * existing session from bypassing login when
+   * the user has just signed up or explicitly
+   * visits the customer login URL.
+   */
+  if (isCustomerLogin) {
+    return <LoginScreen />;
+  }
+
+  /*
+   * Waiter login must always display the
+   * login screen when the user is not
+   * authenticated.
    */
   if (!user) {
     return <LoginScreen />;
@@ -92,9 +138,7 @@ function ChowlyApp() {
 
   /*
    * Prevent an authenticated customer from
-   * accidentally opening the waiter login URL,
-   * and prevent an authenticated waiter from
-   * accidentally opening the customer login URL.
+   * accidentally opening the waiter login URL.
    */
   if (
     isWaiterLogin &&
@@ -102,17 +146,6 @@ function ChowlyApp() {
   ) {
     window.location.replace(
       '/customer-login',
-    );
-
-    return null;
-  }
-
-  if (
-    isCustomerLogin &&
-    role === 'waiter'
-  ) {
-    window.location.replace(
-      '/waiter-login',
     );
 
     return null;

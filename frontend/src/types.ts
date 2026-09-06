@@ -61,6 +61,7 @@ export interface Order {
   completedAt?: number;
   paidAt?: number;
   isPaid: boolean;
+  rating?: number | null;
   paymentSubmitted: boolean;
   paymentMethod?: PaymentMethod;
   chefId?: string;

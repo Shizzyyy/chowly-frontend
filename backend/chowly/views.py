@@ -35,17 +35,20 @@ from .permissions import (
     ComplaintPermission,
     PaymentPermission,
     NotificationPermission,
+    OrderRatingPermission,
 )
 
 from .serializers import (
     RestaurantSerializer,
     CustomerSerializer,
+    CustomerSignupSerializer,
     WaiterSerializer,
     ChefSerializer,
     BartenderSerializer,
     MenuItemSerializer,
     OrderSerializer,
     OrderItemSerializer,
+    OrderRatingSerializer,
     ComplaintSerializer,
     PaymentSerializer,
     NotificationSerializer,
@@ -601,6 +604,59 @@ class ComplaintDetailView(
             )
 
         return Complaint.objects.none()
+
+
+class OrderRatingView(
+    generics.UpdateAPIView
+):
+    serializer_class = OrderRatingSerializer
+    permission_classes = [OrderRatingPermission]
+    http_method_names = ["patch", "put"]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if not user.is_authenticated:
+            return Order.objects.none()
+
+        return Order.objects.select_related(
+            "customer__user",
+        ).filter(
+            customer__user=user,
+        )
+
+    def update(self, request, *args, **kwargs):
+        order = self.get_object()
+
+        if order.rating is not None:
+            return Response(
+                {
+                    "detail": (
+                        "This order has already been rated."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = self.get_serializer(
+            order,
+            data=request.data,
+            partial=True,
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        self.perform_update(serializer)
+
+        return Response(
+            OrderSerializer(
+                order,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class PaymentListCreateView(
@@ -1262,7 +1318,7 @@ def confirm_payment_view(request, pk):
         )
     elif payment.payment_method == "bank_transfer":
         customer_message = (
-            f"Bank transfer for Order #{order.order_id} "
+            f"Bank transfer payment for Order #{order.order_id} "
             "has been verified by your waiter. "
             "Your order is now completed."
         )
@@ -1300,6 +1356,33 @@ def confirm_payment_view(request, pk):
             context={"request": request},
         ).data,
         status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@transaction.atomic
+def customer_signup_view(request):
+    serializer = CustomerSignupSerializer(
+        data=request.data,
+        context={"request": request},
+    )
+
+    serializer.is_valid(
+        raise_exception=True
+    )
+
+    customer = serializer.save()
+
+    return Response(
+        {
+            "detail": "Customer signup successful.",
+            "username": customer.user.username,
+            "role": "customer",
+            "customer_id": customer.customer_id,
+            "name": customer.name,
+        },
+        status=status.HTTP_201_CREATED,
     )
 
 

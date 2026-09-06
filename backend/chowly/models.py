@@ -23,8 +23,11 @@ class Customer(models.Model):
         related_name="customer",
     )
     name = models.CharField(max_length=255)
-    phone_number = models.CharField(max_length=20)
-    email = models.EmailField(unique=True)
+    phone_number = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
 
     def __str__(self):
         return self.name
@@ -167,6 +170,12 @@ class Order(models.Model):
     )
 
     is_paid = models.BooleanField(default=False)
+
+    rating = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional customer rating from 1 to 5",
+    )
 
     customer = models.ForeignKey(
         Customer,

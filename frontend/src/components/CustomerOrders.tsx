@@ -58,6 +58,60 @@ const progressSteps = [
   { key: 'completed', label: 'Completed' },
 ];
 
+const RATING_PROMPT_STORAGE_KEY =
+  'chowly_prompted_rating_order_ids';
+
+function getStoredPromptedRatingOrderIds(): Set<string> {
+  if (typeof window === 'undefined') {
+    return new Set();
+  }
+
+  try {
+    const stored =
+      window.localStorage.getItem(
+        RATING_PROMPT_STORAGE_KEY,
+      );
+
+    if (!stored) {
+      return new Set();
+    }
+
+    const parsed = JSON.parse(stored);
+
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+
+    return new Set(
+      parsed.filter(
+        (value): value is string =>
+          typeof value === 'string',
+      ),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function savePromptedRatingOrderIds(
+  orderIds: Set<string>,
+) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      RATING_PROMPT_STORAGE_KEY,
+      JSON.stringify(
+        Array.from(orderIds),
+      ),
+    );
+  } catch {
+    // Ignore localStorage errors.
+  }
+}
+
 function getProgressIndex(order: Order) {
   switch (order.status) {
     case 'pending':
@@ -73,7 +127,7 @@ function getProgressIndex(order: Order) {
       return 2;
 
     case 'served':
-      return order.paymentSubmitted ? 4 : 3;
+      return order.isPaid ? 4 : 3;
 
     case 'completed':
       return 5;
@@ -88,6 +142,10 @@ function getPaymentMessage(order: Order) {
     return null;
   }
 
+  if (order.isPaid) {
+    return 'Payment confirmed by the waiter.';
+  }
+
   if (order.paymentSubmitted) {
     return 'Payment submitted — waiting for waiter confirmation.';
   }
@@ -98,9 +156,9 @@ function getPaymentMessage(order: Order) {
 export default function CustomerOrders() {
   const {
     orders,
-    tableNumber,
     chefs,
     bartenders,
+    rateOrder,
   } = useApp();
 
   const [complaintOrder, setComplaintOrder] =
@@ -108,6 +166,25 @@ export default function CustomerOrders() {
 
   const [payOrder, setPayOrder] =
     useState<Order | null>(null);
+
+  const [ratingOrder, setRatingOrder] =
+    useState<Order | null>(null);
+
+  const [selectedRating, setSelectedRating] =
+    useState(0);
+
+  const [ratingSubmitting, setRatingSubmitting] =
+    useState(false);
+
+  const [ratingError, setRatingError] =
+    useState<string | null>(null);
+
+  const [
+    promptedRatingOrderIds,
+    setPromptedRatingOrderIds,
+  ] = useState<Set<string>>(
+    () => getStoredPromptedRatingOrderIds(),
+  );
 
   const [activeSection, setActiveSection] =
     useState<'ongoing' | 'completed'>(
@@ -125,9 +202,87 @@ export default function CustomerOrders() {
     return () => clearInterval(interval);
   }, []);
 
-  const myOrders = orders.filter(
-    (order) => order.tableNumber === tableNumber,
-  );
+  /*
+   * Orders are already filtered by the authenticated
+   * customer on the backend.
+   *
+   * Do NOT filter orders by tableNumber here.
+   * The table number belongs to an individual order,
+   * while order history belongs to the customer account.
+   *
+   * This allows completed orders to remain visible after
+   * the customer logs out and logs back in, even though
+   * tableNumber is intentionally reset to null.
+   */
+  const myOrders = orders;
+
+  const markRatingPrompted = (
+    orderId: string,
+  ) => {
+    setPromptedRatingOrderIds(
+      (prev) => {
+        const next = new Set(prev);
+        next.add(orderId);
+        savePromptedRatingOrderIds(next);
+        return next;
+      },
+    );
+  };
+
+  const openRatingPrompt = (order: Order) => {
+    if (
+      ratingOrder ||
+      order.rating != null ||
+      promptedRatingOrderIds.has(order.id)
+    ) {
+      return;
+    }
+
+    /*
+     * Rating is only available after the waiter
+     * confirms the payment.
+     *
+     * The waiter confirmation changes the order
+     * status from "served" to "completed".
+     *
+     * This is intentionally NOT based on isPaid alone,
+     * because Pretend Payment can set isPaid immediately
+     * while the payment is still awaiting waiter confirmation.
+     */
+    const eligible =
+      order.isPaid &&
+      order.status === 'completed';
+
+    if (!eligible) {
+      return;
+    }
+
+    setRatingOrder(order);
+    setSelectedRating(0);
+    setRatingError(null);
+  };
+
+  useEffect(() => {
+    if (ratingOrder) {
+      return;
+    }
+
+    const eligibleOrder = myOrders.find(
+      (order) =>
+        order.isPaid &&
+        order.rating == null &&
+        order.status === 'completed' &&
+        !promptedRatingOrderIds.has(order.id),
+    );
+
+    if (eligibleOrder) {
+      openRatingPrompt(eligibleOrder);
+    }
+  }, [
+    myOrders,
+    ratingOrder,
+    promptedRatingOrderIds,
+  ]);
 
   const ongoingOrders = myOrders.filter(
     (order) => order.status !== 'completed',
@@ -136,6 +291,62 @@ export default function CustomerOrders() {
   const completedOrders = myOrders.filter(
     (order) => order.status === 'completed',
   );
+
+  const closeRatingModal = () => {
+    if (!ratingOrder) {
+      return;
+    }
+
+    markRatingPrompted(
+      ratingOrder.id,
+    );
+
+    setRatingOrder(null);
+    setSelectedRating(0);
+    setRatingError(null);
+    setRatingSubmitting(false);
+  };
+
+  const handleRatingSubmit = async () => {
+    if (!ratingOrder) {
+      return;
+    }
+
+    if (
+      selectedRating < 1 ||
+      selectedRating > 5
+    ) {
+      setRatingError(
+        'Please select a rating from 1 to 5 stars.',
+      );
+      return;
+    }
+
+    try {
+      setRatingSubmitting(true);
+      setRatingError(null);
+
+      await rateOrder(
+        ratingOrder.id,
+        selectedRating,
+      );
+
+      markRatingPrompted(
+        ratingOrder.id,
+      );
+
+      setRatingOrder(null);
+      setSelectedRating(0);
+    } catch (error) {
+      setRatingError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to submit your rating. Please try again.',
+      );
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
 
   if (myOrders.length === 0) {
     return (
@@ -199,7 +410,7 @@ export default function CustomerOrders() {
     const complaintEligible =
       order.status ===
         'preparing' &&
-      preparingElapsedMin >= 30;
+      preparingElapsedMin >= 20;
 
     const canComplain =
       complaintEligible &&
@@ -207,7 +418,8 @@ export default function CustomerOrders() {
 
     const canPay =
       order.status === 'served' &&
-      !order.paymentSubmitted;
+      !order.paymentSubmitted &&
+      !order.isPaid;
 
     const progressIndex =
       getProgressIndex(order);
@@ -220,7 +432,6 @@ export default function CustomerOrders() {
         key={order.id}
         className="card overflow-hidden"
       >
-        {/* Order header */}
         <div className="flex items-center justify-between border-b border-ink-100 bg-cream-50 px-5 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-bold text-ink-900">
@@ -248,7 +459,6 @@ export default function CustomerOrders() {
         </div>
 
         <div className="p-5">
-          {/* Order progress */}
           <div className="mb-6 rounded-2xl bg-cream-50 px-3 py-4 sm:px-5">
             <div className="flex items-start justify-between">
               {progressSteps.map(
@@ -336,7 +546,6 @@ export default function CustomerOrders() {
             </div>
           </div>
 
-          {/* Items */}
           <div className="space-y-1.5">
             {order.items.map(
               (item) => (
@@ -362,7 +571,6 @@ export default function CustomerOrders() {
             )}
           </div>
 
-          {/* Order information */}
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-500">
             <span className="flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
@@ -393,13 +601,14 @@ export default function CustomerOrders() {
             )}
           </div>
 
-          {/* Payment status */}
           {paymentMessage && (
             <div
               className={`mt-3 rounded-xl px-3 py-3 text-xs ${
-                order.paymentSubmitted
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'bg-success-50 text-success-700'
+                order.isPaid
+                  ? 'bg-success-50 text-success-700'
+                  : order.paymentSubmitted
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'bg-success-50 text-success-700'
               }`}
             >
               <div className="flex items-center gap-2">
@@ -412,7 +621,6 @@ export default function CustomerOrders() {
             </div>
           )}
 
-          {/* Completed payment */}
           {order.status ===
             'completed' && (
             <div className="mt-3 rounded-xl bg-success-50 px-3 py-3 text-xs text-success-700">
@@ -426,7 +634,36 @@ export default function CustomerOrders() {
             </div>
           )}
 
-          {/* Complaint submitted */}
+          {order.rating != null && (
+            <div className="mt-3 rounded-xl bg-primary-50 p-3">
+              <div className="flex items-center gap-2">
+                <Star className="h-4 w-4 text-primary-500" />
+
+                <span className="text-xs font-semibold text-primary-700">
+                  Your rating
+                </span>
+
+                <div className="ml-auto flex items-center gap-0.5">
+                  {Array.from({
+                    length: 5,
+                  }).map(
+                    (_, i) => (
+                      <Star
+                        key={i}
+                        className={`h-3.5 w-3.5 ${
+                          i <
+                          order.rating!
+                            ? 'fill-primary-500 text-primary-500'
+                            : 'text-ink-200'
+                        }`}
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {order.complaint && (
             <div className="mt-3 rounded-xl bg-error-50 p-3">
               <div className="flex items-center gap-2">
@@ -463,7 +700,6 @@ export default function CustomerOrders() {
             </div>
           )}
 
-          {/* Complaint waiting message */}
           {order.status ===
             'preparing' &&
             !order.complaint &&
@@ -471,11 +707,10 @@ export default function CustomerOrders() {
               <div className="mt-3 flex items-center gap-2 rounded-xl bg-cream-200 px-3 py-2 text-xs text-ink-500">
                 <Clock className="h-3.5 w-3.5" />
                 Complaint option becomes available after
-                30 minutes of preparation.
+                20 minutes of preparation.
               </div>
             )}
 
-          {/* Footer */}
           <div className="mt-4 flex flex-col gap-3 border-t border-ink-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <span className="text-xs text-ink-400">
@@ -520,12 +755,20 @@ export default function CustomerOrders() {
 
               {order.status ===
                 'served' &&
-                order.paymentSubmitted && (
+                order.paymentSubmitted &&
+                !order.isPaid && (
                   <span className="chip bg-primary-100 text-primary-700">
                     <Clock className="h-3.5 w-3.5" />
                     Awaiting confirmation
                   </span>
                 )}
+
+              {order.isPaid && (
+                <span className="chip bg-success-100 text-success-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Payment confirmed
+                </span>
+              )}
 
               {order.status ===
                 'completed' && (
@@ -555,14 +798,13 @@ export default function CustomerOrders() {
           </h2>
 
           <p className="mt-1 text-sm text-ink-500">
-            Table {tableNumber} · {myOrders.length}{' '}
+            {myOrders.length}{' '}
             {myOrders.length === 1
               ? 'order'
               : 'orders'}
           </p>
         </div>
 
-        {/* Order section switcher */}
         <div className="mt-6 rounded-2xl bg-cream-200 p-1.5">
           <div className="grid grid-cols-2 gap-1.5">
             <button
@@ -627,7 +869,6 @@ export default function CustomerOrders() {
           </div>
         </div>
 
-        {/* Selected orders */}
         <section className="mt-6">
           {displayedOrders.length ===
           0 ? (
@@ -681,7 +922,130 @@ export default function CustomerOrders() {
         onClose={() =>
           setPayOrder(null)
         }
+        onPaymentSubmitted={() => {
+          setPayOrder(null);
+        }}
       />
+
+      {ratingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 px-4 py-6 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rating-modal-title"
+            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+          >
+            <div className="text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-100">
+                <Star className="h-7 w-7 fill-primary-500 text-primary-500" />
+              </div>
+
+              <h3
+                id="rating-modal-title"
+                className="mt-4 font-display text-2xl font-bold text-ink-900"
+              >
+                Rate this order
+              </h3>
+
+              <p className="mt-2 text-sm text-ink-500">
+                How was your experience with order #{ratingOrder.id}?
+              </p>
+            </div>
+
+            <div className="mt-6 flex items-center justify-center gap-2">
+              {Array.from({
+                length: 5,
+              }).map(
+                (_, index) => {
+                  const value =
+                    index + 1;
+
+                  const selected =
+                    value <=
+                    selectedRating;
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-label={`Rate ${value} out of 5 stars`}
+                      aria-pressed={
+                        selected
+                      }
+                      disabled={
+                        ratingSubmitting
+                      }
+                      onClick={() =>
+                        setSelectedRating(
+                          value,
+                        )
+                      }
+                      className="rounded-full p-1.5 transition-transform hover:scale-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Star
+                        className={`h-9 w-9 sm:h-10 sm:w-10 ${
+                          selected
+                            ? 'fill-primary-500 text-primary-500'
+                            : 'text-ink-200'
+                        }`}
+                      />
+                    </button>
+                  );
+                },
+              )}
+            </div>
+
+            {selectedRating > 0 && (
+              <p className="mt-3 text-center text-xs font-semibold text-primary-600">
+                {selectedRating === 1
+                  ? '1 star'
+                  : `${selectedRating} stars`}
+              </p>
+            )}
+
+            {ratingError && (
+              <div className="mt-4 rounded-xl bg-error-50 px-3 py-3 text-center text-xs font-semibold text-error-600">
+                {ratingError}
+              </div>
+            )}
+
+            <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={
+                  closeRatingModal
+                }
+                disabled={
+                  ratingSubmitting
+                }
+                className="rounded-full border border-ink-200 bg-white px-5 py-2.5 text-sm font-semibold text-ink-600 transition-all hover:bg-cream-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Skip
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handleRatingSubmit
+                }
+                disabled={
+                  ratingSubmitting ||
+                  selectedRating === 0
+                }
+                className="rounded-full bg-primary-500 px-6 py-2.5 text-sm font-bold text-white shadow-warm transition-all hover:bg-primary-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {ratingSubmitting
+                  ? 'Submitting...'
+                  : 'Submit rating'}
+              </button>
+            </div>
+
+            <p className="mt-4 text-center text-[11px] text-ink-400">
+              Rating is optional and does not affect your payment or order completion.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

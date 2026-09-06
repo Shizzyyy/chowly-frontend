@@ -101,11 +101,17 @@ CSRF_TRUSTED_ORIGINS = [
 
 # SESSION / CSRF COOKIES
 
-SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
-SESSION_COOKIE_SECURE = not DEBUG
+USE_SECURE_COOKIES = FRONTEND_URL.startswith("https://")
 
-CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
-CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = (
+    "None" if USE_SECURE_COOKIES else "Lax"
+)
+SESSION_COOKIE_SECURE = USE_SECURE_COOKIES
+
+CSRF_COOKIE_SAMESITE = (
+    "None" if USE_SECURE_COOKIES else "Lax"
+)
+CSRF_COOKIE_SECURE = USE_SECURE_COOKIES
 
 
 ROOT_URLCONF = "config.urls"
@@ -169,6 +175,12 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": (
             "django.contrib.auth.password_validation."
             "UserAttributeSimilarityValidator"
+        ),
+    },
+    {
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "MinimumLengthValidator"
         ),
     },
     {
