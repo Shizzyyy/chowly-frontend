@@ -4,9 +4,18 @@ services:
     container_name: chowly-backend
     ports:
       - "8000:8000"
-    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_DEBUG: "False"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      FRONTEND_URL: ${FRONTEND_URL}
+      DATABASE_URL: postgresql://chowly_user:${POSTGRES_PASSWORD}@db:5432/chowly
+    command: >
+      sh -c "python manage.py migrate &&
+             gunicorn --bind 0.0.0.0:8000 config.wsgi:application"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:17
@@ -14,11 +23,18 @@ services:
     environment:
       POSTGRES_DB: chowly
       POSTGRES_USER: chowly_user
-      POSTGRES_PASSWORD: chowly_password
-    ports:
-      - "5433:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U chowly_user -d chowly"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres_data:
