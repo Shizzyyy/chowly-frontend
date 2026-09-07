@@ -1442,6 +1442,9 @@ def customer_login_view(request):
             status=status.HTTP_403_FORBIDDEN,
         )
 
+    # Explicitly replace any existing customer/waiter
+    # session before creating the new customer session.
+    logout(request)
     login(request, user)
 
     return Response(
@@ -1512,6 +1515,9 @@ def waiter_login_view(request):
             status=status.HTTP_403_FORBIDDEN,
         )
 
+    # Explicitly replace any existing customer/waiter
+    # session before creating the new waiter session.
+    logout(request)
     login(request, user)
 
     return Response(

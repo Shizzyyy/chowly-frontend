@@ -52,11 +52,6 @@ function ChowlyApp() {
     /*
      * Whenever the customer logs out, always reset
      * the active customer tab to Menu.
-     *
-     * This means that after logging back in, the
-     * customer starts from the Menu page instead of
-     * being returned to the Orders page they logged
-     * out from.
      */
     if (!user) {
       setCustomerTab('menu');
@@ -109,6 +104,12 @@ function ChowlyApp() {
   const isWaiterLogin =
     pathname === '/waiter-login';
 
+  const isCustomerApp =
+    pathname === '/customer';
+
+  const isWaiterApp =
+    pathname === '/waiter';
+
   /*
    * Customer signup is always accessible.
    */
@@ -118,10 +119,7 @@ function ChowlyApp() {
 
   /*
    * Customer login must always display the
-   * customer login screen. This prevents an
-   * existing session from bypassing login when
-   * the user has just signed up or explicitly
-   * visits the customer login URL.
+   * customer login screen.
    */
   if (isCustomerLogin) {
     return <LoginScreen />;
@@ -129,51 +127,55 @@ function ChowlyApp() {
 
   /*
    * Waiter login must always display the
-   * login screen when the user is not
-   * authenticated.
+   * waiter login screen.
    */
-  if (!user) {
+  if (isWaiterLogin) {
     return <LoginScreen />;
   }
 
   /*
-   * Prevent an authenticated customer from
-   * accidentally opening the waiter login URL.
+   * The root URL is intentionally reserved for
+   * the future Chowly landing page.
+   *
+   * For now, show the customer login screen there
+   * only when no landing page exists yet.
    */
-  if (
-    isWaiterLogin &&
-    role === 'customer'
-  ) {
-    window.location.replace(
-      '/customer-login',
-    );
-
-    return null;
+  if (pathname === '/') {
+    return <LoginScreen />;
   }
 
-  return (
-    <div className="min-h-screen bg-cream-100 flex flex-col">
-      <Header
-        customerTab={customerTab}
-        setCustomerTab={setCustomerTab}
-      />
+  /*
+   * Customer application route.
+   *
+   * A customer must be authenticated to access it.
+   */
+  if (isCustomerApp) {
+    if (!user || role !== 'customer') {
+      window.location.replace(
+        '/customer-login',
+      );
 
-      <main className="flex-1">
-        {role === 'customer' ? (
-          customerTab === 'menu' ? (
+      return null;
+    }
+
+    return (
+      <div className="min-h-screen bg-cream-100 flex flex-col">
+        <Header
+          customerTab={customerTab}
+          setCustomerTab={setCustomerTab}
+        />
+
+        <main className="flex-1">
+          {customerTab === 'menu' ? (
             <CustomerMenu />
           ) : (
             <CustomerOrders />
-          )
-        ) : (
-          <WaiterView />
-        )}
-      </main>
+          )}
+        </main>
 
-      <Footer />
+        <Footer />
 
-      {role === 'customer' &&
-        customerTab === 'menu' && (
+        {customerTab === 'menu' && (
           <CartBar
             onOrderPlaced={(order) =>
               setPlacedOrder(order)
@@ -181,20 +183,68 @@ function ChowlyApp() {
           />
         )}
 
-      {placedOrder && (
-        <OrderConfirmation
-          order={placedOrder}
-          onClose={() =>
-            setPlacedOrder(null)
-          }
-          onViewOrders={() => {
-            setPlacedOrder(null);
-            setCustomerTab('orders');
-          }}
+        {placedOrder && (
+          <OrderConfirmation
+            order={placedOrder}
+            onClose={() =>
+              setPlacedOrder(null)
+            }
+            onViewOrders={() => {
+              setPlacedOrder(null);
+              setCustomerTab('orders');
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  /*
+   * Waiter application route.
+   *
+   * A waiter must be authenticated to access it.
+   */
+  if (isWaiterApp) {
+    if (!user || role !== 'waiter') {
+      window.location.replace(
+        '/waiter-login',
+      );
+
+      return null;
+    }
+
+    return (
+      <div className="min-h-screen bg-cream-100 flex flex-col">
+        <Header
+          customerTab={customerTab}
+          setCustomerTab={setCustomerTab}
         />
-      )}
-    </div>
-  );
+
+        <main className="flex-1">
+          <WaiterView />
+        </main>
+
+        <Footer />
+      </div>
+    );
+  }
+
+  /*
+   * Unknown routes return to the appropriate
+   * login page instead of silently opening the
+   * customer application.
+   */
+  if (user && role === 'customer') {
+    window.location.replace('/customer');
+    return null;
+  }
+
+  if (user && role === 'waiter') {
+    window.location.replace('/waiter');
+    return null;
+  }
+
+  return <LoginScreen />;
 }
 
 export default function App() {

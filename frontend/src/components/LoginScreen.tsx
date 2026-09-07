@@ -42,7 +42,10 @@ export default function LoginScreen() {
         selectedRole,
       );
 
-      window.location.href = '/';
+      window.location.href =
+        selectedRole === 'customer'
+          ? '/customer'
+          : '/waiter';
     } catch (err) {
       setError(
         err instanceof Error
